@@ -18,7 +18,7 @@ import numpy as np
 import cv2
 import time
 from scipy.stats import t
-
+from sklearn.cluster import DBSCAN
 
 def clustering(sample_img):
     Z = sample_img.reshape((-1,3))
@@ -36,6 +36,8 @@ def clustering(sample_img):
     compactness,labels,centers = cv2.kmeans(Z,NUMBER_OF_CLUSTERS,\
                                             None,criteria,3,flags)
     
+    db = DBSCAN(eps=3, min_samples=10).fit(Z)
+    NUMBER_OF_CLUSTERS = len(set(db.labels_)) - (1 if -1 in db.labels_ else 0)
     
     centers = np.uint8(centers)
     #res = centers[labels.flatten()]
@@ -64,24 +66,31 @@ def clustering(sample_img):
     
     point_estimates = []
     for i in range(NUMBER_OF_CLUSTERS):
+        global Z
+        global boolean_index
         label_index = (labels==i)
         boolean_index = np.dstack([label_index[:,0]]*3)[0]
         values_of_labels = Z[boolean_index].reshape((-1,3))
         
         #Covariance of three image channels calculations
+        center_0 = np.mean(values_of_labels[:,0])
+        center_1 = np.mean(values_of_labels[:,1])
+        center_2 = np.mean(values_of_labels[:,2])
+        center  = np.array([center_0, center_1, center_2])
+        
         var0  = np.var(values_of_labels[:,0])
         var1  = np.var(values_of_labels[:,1])
         var2  = np.var(values_of_labels[:,2])
-        var   = np.array(np.array([var0, var1, var2]))
+        var   = np.array([var0, var1, var2])
         std   = np.sqrt(np.array([var0, var1, var2]))
     
         point_estimate = {}
-        point_estimate['center'] = centers[i]
+        point_estimate['center'] = center
         point_estimate['standard_deviation'] = std
         point_estimate['90percentile'] = np.array([
-                                       t.interval(0.90, 100, loc=centers[i][0], scale=var[0]),
-                                       t.interval(0.90, 100, loc=centers[i][1], scale=var[1]),
-                                       t.interval(0.90, 100, loc=centers[i][2], scale=var[2])])   
+                                       t.interval(0.9999, 100, loc=center[0], scale=std[0]),
+                                       t.interval(0.9999, 100, loc=center[1], scale=std[1]),
+                                       t.interval(0.9999, 100, loc=center[2], scale=std[2])])   
         point_estimates.append(point_estimate)
         
     return point_estimates
@@ -92,7 +101,7 @@ Use color cluster to figure out most common color in a region from positive and 
 With their variance, pick the color range that minimize covariance
 '''
 
-sample_img_positive = cv2.imread('sample_test_negative.jpg')
+sample_img_positive = cv2.imread('sample_test_positive_2.jpg')
 sample_img_positive = cv2.cvtColor(sample_img_positive, cv2.COLOR_BGR2HSV)
 sample_img_positive = cv2.resize(sample_img_positive, (0,0), fx=0.2, fy=0.2)
 positive_point_estimates = clustering(sample_img_positive)
